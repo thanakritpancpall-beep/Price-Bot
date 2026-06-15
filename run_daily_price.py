@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import google.generativeai as genai
 from apify_client import ApifyClient
 
-print("🚀 เริ่มระบบ Daily Price Bot (28-Days Scan & Advanced AI Edition)...")
+print("🚀 เริ่มระบบ Daily Price Bot (28-Days Scan & Messaging API Edition)...")
 
 # =================================================================
 # 1. โหลดกุญแจทั้งหมด
@@ -18,7 +18,8 @@ print("🚀 เริ่มระบบ Daily Price Bot (28-Days Scan & Advanced
 gcp_creds_json = os.environ.get("GCP_CREDENTIALS")
 gemini_key = os.environ.get("GEMINI_API_KEY")
 apify_token = os.environ.get("APIFY_API_TOKEN")
-line_token = os.environ.get("LINE_NOTIFY_TOKEN")
+line_channel_token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
+line_user_id = os.environ.get("LINE_USER_ID")
 
 # ตั้งค่า Google Sheets
 creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(gcp_creds_json), ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
@@ -33,7 +34,7 @@ apify = ApifyClient(apify_token)
 final_data = []
 
 # =================================================================
-# 2. ฟังก์ชัน AI อ่านข้อมูล (คลังคำศัพท์ ทิชชู่ & ผ้าอนามัย แบบเจาะลึก)
+# 2. ฟังก์ชัน AI อ่านข้อมูล
 # =================================================================
 def analyze_with_ai(prompt_text, image_obj=None):
     prompt = f"""
@@ -94,7 +95,7 @@ except Exception as e:
 print("\n📱 [2/2] กำลังสูบข้อมูล Facebook ย้อนหลัง 28 วัน (อาจใช้เวลา 3-5 นาที)...")
 run_input = {
     "startUrls": [{"url": "https://www.facebook.com/CJMORETH"}, {"url": "https://www.facebook.com/7ElevenThailand"}],
-    "resultsLimit": 80 # ดึงเผื่อไว้ 80 โพสต์ล่าสุด เพื่อให้ครอบคลุม 28 วัน
+    "resultsLimit": 80
 }
 
 try:
@@ -105,13 +106,12 @@ try:
     current_time = datetime.now()
     
     for post in dataset:
-        # ระบบตัวกรอง 28 วัน (ตัดโพสต์เก่าทิ้ง)
         post_time_str = post.get("time")
         if post_time_str:
             try:
                 post_date = datetime.strptime(post_time_str[:10], "%Y-%m-%d")
                 if (current_time - post_date).days > 28:
-                    continue # ข้ามโพสต์ที่เก่ากว่า 28 วัน
+                    continue
             except Exception:
                 pass
                 
@@ -119,7 +119,6 @@ try:
         caption = post.get("text", "")
         img_url = post.get("media", [{}])[0].get("url", "") if post.get("media") else ""
         
-        # กรองโพสต์ที่น่าจะเกี่ยวกับสินค้าหรือโปรโมชั่นก่อนส่งให้ AI เพื่อประหยัดเวลา
         keywords_check = ["โปร", "ลด", "ทิชชู่", "ผ้าอนามัย", "กระดาษ", "เซลล็อกซ์", "คลีเน็กซ์", "สก๊อตต์", "โซฟี", "ลอรีเอะ", "เอลิส", "1แถม1", "บาท"]
         has_keyword = any(k in caption for k in keywords_check)
         
@@ -137,7 +136,7 @@ try:
                 final_data.append(item)
                 fb_count += 1
                 
-    print(f"✅ สแกน Facebook (28 วันล่าสุด) สำเร็จ พบเป้าหมายเพิ่มเติม {fb_count} รายการ")
+    print(f"✅ สแกน Facebook สำเร็จ พบเป้าหมายเพิ่มเติม {fb_count} รายการ")
 except Exception as e:
     print(f"❌ Facebook Scrape Error: {e}")
 
@@ -181,17 +180,31 @@ if rows_to_insert:
     print("🎉 อัปเดตข้อมูลลง Google Sheets สำเร็จ!")
 
 # =================================================================
-# 6. ส่งแจ้งเตือนรายงานเข้า LINE
+# 6. ส่งแจ้งเตือนรายงานเข้า LINE (ผ่าน Messaging API โฉมใหม่)
 # =================================================================
-if line_token:
-    print("📲 กำลังส่งรายงานสรุปเข้า LINE...")
-    message = f"\n📊 สรุปรายงานราคาสินค้าคู่แข่ง\nสแกนย้อนหลัง 28 วันล่าสุด\nประจำวันที่ {today_str}\n\n"
+if line_channel_token and line_user_id:
+    print("📲 กำลังส่งรายงานสรุปเข้า LINE Messaging API...")
+    message = f"📊 สรุปรายงานราคาสินค้าคู่แข่ง\nสแกนย้อนหลัง 28 วันล่าสุด\nประจำวันที่ {today_str}\n\n"
     message += f"พบโปรโมชั่น ทิชชู่/ผ้าอนามัย ทั้งหมด {len(final_data)} รายการ\n"
     message += f"🏪 จาก CJ Express: {cj_count} รายการ\n"
     message += f"🏪 จาก 7-Eleven: {cp_count} รายการ\n\n"
     message += f"🔗 ดูตารางฉบับเต็มคลิก:\nhttps://docs.google.com/spreadsheets/d/1B0jgEo8_nbuRiwYZIw_op8K7jjeA2DjKcwHQyPBxhWE"
     
-    line_url = "https://notify-api.line.me/api/notify"
-    line_headers = {"Authorization": f"Bearer {line_token}"}
-    requests.post(line_url, headers=line_headers, data={"message": message})
-    print("✅ ส่งแจ้งเตือน LINE เรียบร้อยแล้ว!")
+    line_url = "https://api.line.me/v2/bot/message/push"
+    line_headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {line_channel_token}"
+    }
+    line_payload = {
+        "to": line_user_id,
+        "messages": [{"type": "text", "text": message}]
+    }
+    
+    try:
+        res = requests.post(line_url, headers=line_headers, json=line_payload)
+        if res.status_code == 200:
+            print("✅ ส่งแจ้งเตือน LINE ทะลุเข้ามือถือเรียบร้อยแล้ว!")
+        else:
+            print(f"❌ ส่งแจ้งเตือน LINE พลาด: {res.text}")
+    except Exception as e:
+        print(f"❌ Error ส่ง LINE: {e}")
