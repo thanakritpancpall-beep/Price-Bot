@@ -23,10 +23,11 @@ jobs:
 
     - name: Install Tools
       run: |
-        pip install gspread oauth2client requests beautifulsoup4 google-generativeai
+        pip install gspread oauth2client requests beautifulsoup4 google-generativeai apify-client Pillow
 
     - name: Run Python Script
       env:
         GCP_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS }}
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
       run: python run_daily_price.py
