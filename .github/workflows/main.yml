@@ -30,4 +30,4 @@ jobs:
         GCP_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS }}
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
-      run: python run_daily_price.py
+      run: python price_bot_v2.py
